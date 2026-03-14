@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  />
+  <title>3D Room Viewer Demo</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #111;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #111;
+    }
+
+    #roomCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #labelLayer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .dim-label {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    }
+
+    .controls-bar {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      z-index: 20;
+      width: calc(100% - 24px);
+      max-width: 720px;
+      pointer-events: none;
+    }
+
+    .controls-bar.top {
+      top: 12px;
+    }
+
+    .controls-bar.bottom {
+      bottom: 12px;
+    }
+
+    .controls-inner {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      pointer-events: auto;
+      background: rgba(20, 20, 20, 0.55);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 8px;
+    }
+
+    .control-btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      min-width: 58px;
+    }
+
+    .control-btn.active {
+      background: #fff;
+      color: #111;
+      font-weight: 700;
+    }
+
+    #miniMapWrap {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      width: 150px;
+      height: 150px;
+      z-index: 20;
+      background: rgba(20, 20, 20, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+
+    #miniMapTitle {
+      color: #fff;
+      font-size: 12px;
+      margin-bottom: 6px;
+      opacity: 0.9;
+    }
+
+    #miniMap {
+      width: 100%;
+      height: calc(100% - 20px);
+      display: block;
+      background: #f5f5f5;
+      border-radius: 10px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    #orientationWidget {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: 84px;
+      height: 84px;
+      z-index: 20;
+      border-radius: 50%;
+      background: rgba(20, 20, 20, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+
+    #orientationInner {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 50%;
+    }
+
+    .ori-dot {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .ori-dot.red {
+      background: #ff5b5b;
+      left: 50%;
+      top: 8px;
+    }
+
+    .ori-dot.blue {
+      background: #60a5fa;
+      left: 50px;
+      top: 50%;
+    }
+
+    .ori-dot.green {
+      background: #22c55e;
+      left: 8px;
+      top: 50%;
+    }
+
+    #orientationText {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: #fff;
+      opacity: 0.8;
+      white-space: nowrap;
+    }
+
+    #helpBadge {
+      position: absolute;
+      top: 82px;
+      left: 12px;
+      z-index: 20;
+      color: #fff;
+      background: rgba(20,20,20,0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      max-width: 220px;
+    }
+
+    @media (max-width: 520px) {
+      .control-btn {
+        padding: 9px 10px;
+        min-width: 52px;
+        font-size: 12px;
+      }
+
+      #miniMapWrap {
+        width: 136px;
+        height: 136px;
+      }
+
+      #helpBadge {
+        max-width: 170px;
+        font-size: 11px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="roomCanvas"></canvas>
+    <div id="labelLayer"></div>
+
+    <div class="controls-bar top">
+      <div class="controls-inner">
+        <button class="control-btn active" id="btnView3d">3D</button>
+        <button class="control-btn" id="btnViewIso">ISO</button>
+        <button class="control-btn" id="btnViewTop">TOP</button>
+      </div>
+    </div>
+
+    <div id="helpBadge">
+      One finger: rotate<br />
+      Two fingers: zoom / pan
+    </div>
+
+    <div class="controls-bar bottom">
+      <div class="controls-inner">
+        <button class="control-btn" id="btnFront">Front</button>
+        <button class="control-btn" id="btnLeft">Left</button>
+        <button class="control-btn" id="btnRight">Right</button>
+        <button class="control-btn active" id="btnToggleDims">Dims ON</button>
+      </div>
+    </div>
+
+    <div id="miniMapWrap">
+      <div id="miniMapTitle">Rooms</div>
+      <canvas id="miniMap"></canvas>
+    </div>
+
+    <div id="orientationWidget">
+      <div id="orientationInner">
+        <div class="ori-dot red"></div>
+        <div class="ori-dot blue"></div>
+        <div class="ori-dot green"></div>
+        <div id="orientationText">View</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/room-ui.js"></script>
+</body>
+</html>
