@@ -16,7 +16,7 @@ const btnToggleDims = document.getElementById("btnToggleDims");
 /* =========================
    SCALE / CONSTANTS
 ========================= */
-const CM_TO_UNIT = 0.01; // 1 unit = 1 meter
+const CM_TO_UNIT = 0.01;
 const WALL_HEIGHT_CM = 250;
 const WALL_HEIGHT = WALL_HEIGHT_CM * CM_TO_UNIT;
 const FLOOR_THICKNESS = 0.04;
@@ -34,15 +34,12 @@ let activeFocusedRoomId = "";
 let currentAnimation = null;
 
 /* =========================
-   FLOOR PLAN DATA
-   Using p5 coordinates directly
-   p5:
-   x -> east
-   y -> south (downward on screen)
-
-   Three.js world:
-   x -> east
-   z -> north/south after conversion
+   P5 COORDINATES USED DIRECTLY
+   x -> east/right
+   y -> downward on plan
+   in Three.js we map:
+   x -> x
+   y(plan) -> z
 ========================= */
 const rooms = [
   {
@@ -80,7 +77,9 @@ const rooms = [
     depth: 320,
     color: 0xfff0db,
     walls: { west: 20, east: 10, south: 14, north: 20 },
-    doors: [{ id: "storage_door", wall: "south", align: "right", width: 75 }],
+    doors: [
+      { id: "storage_door", wall: "south", align: "right", width: 75 },
+    ],
   },
   {
     id: "guest_room",
@@ -91,7 +90,9 @@ const rooms = [
     depth: 320,
     color: 0xf3e8ff,
     walls: { west: 10, east: 11, south: 14, north: 20 },
-    doors: [{ id: "guest_door", wall: "south", align: "right", width: 84 }],
+    doors: [
+      { id: "guest_door", wall: "south", align: "right", width: 84 },
+    ],
   },
   {
     id: "master_bedroom",
@@ -102,7 +103,9 @@ const rooms = [
     depth: 320,
     color: 0xefe2ff,
     walls: { west: 11, east: 20, south: 11, north: 10 },
-    doors: [{ id: "master_bed_door", wall: "west", align: "bottom", width: 97 }],
+    doors: [
+      { id: "master_bed_door", wall: "west", align: "bottom", width: 97 },
+    ],
   },
   {
     id: "master_bathroom",
@@ -113,7 +116,9 @@ const rooms = [
     depth: 120,
     color: 0xe0f2fe,
     walls: { west: 11, east: 20, south: 10, north: 20 },
-    doors: [{ id: "master_bath_door", wall: "south", align: "left", width: 75 }],
+    doors: [
+      { id: "master_bath_door", wall: "south", align: "left", width: 75 },
+    ],
   },
   {
     id: "living_bathroom",
@@ -124,7 +129,9 @@ const rooms = [
     depth: 263,
     color: 0xe6fffb,
     walls: { west: 18, east: 15, south: 10, north: 14 },
-    doors: [{ id: "living_bath_door", wall: "east", align: "top", width: 81.5 }],
+    doors: [
+      { id: "living_bath_door", wall: "east", align: "top", width: 81.5 },
+    ],
   },
   {
     id: "kitchen",
@@ -135,7 +142,9 @@ const rooms = [
     depth: 157,
     color: 0xfde7c7,
     walls: { west: 20, east: 15, south: 14, north: 10 },
-    doors: [{ id: "kitchen_room_door", wall: "east", offsetFromSouth: 65, width: 81.5 }],
+    doors: [
+      { id: "kitchen_room_door", wall: "east", offsetFromSouth: 65, width: 81.5 },
+    ],
   },
   {
     id: "laundry",
@@ -146,7 +155,9 @@ const rooms = [
     depth: 241,
     color: 0xffedd5,
     walls: { west: 20, east: 18, south: 10, north: 12 },
-    doors: [{ id: "laundry_door", wall: "south", align: "right", width: 70 }],
+    doors: [
+      { id: "laundry_door", wall: "south", align: "right", width: 70 },
+    ],
   },
 ];
 
@@ -161,11 +172,9 @@ function getRoomWorldRect(room) {
   const minX = cm(room.x);
   const maxX = cm(room.x + room.width);
 
-  // Convert p5 screen Y to world Z
-  // south edge = -(y + depth)
-  // north edge = -y
-  const minZ = cm(-(room.y + room.depth));
-  const maxZ = cm(-room.y);
+  // Use p5 plan directly: y becomes z
+  const minZ = cm(room.y);
+  const maxZ = cm(room.y + room.depth);
 
   return {
     minX,
@@ -227,13 +236,20 @@ function getDoorStart(room, door) {
     return 0;
   }
 
-  // vertical walls: measure from SOUTH edge upward
-  if (typeof door.offsetFromSouth === "number") return door.offsetFromSouth;
-  if (typeof door.offsetFromNorth === "number") {
-    return room.depth - door.offsetFromNorth - door.width;
+  // For west/east walls, use p5 logic exactly:
+  // offsetFromSouth means distance from bottom edge upward,
+  // but since our rect.minZ is the top edge in this direct mapping,
+  // convert it to start from top.
+  if (typeof door.offsetFromSouth === "number") {
+    return room.depth - door.offsetFromSouth - door.width;
   }
-  if (door.align === "bottom") return 0;
-  if (door.align === "top") return room.depth - door.width;
+
+  if (typeof door.offsetFromNorth === "number") {
+    return door.offsetFromNorth;
+  }
+
+  if (door.align === "top") return 0;
+  if (door.align === "bottom") return room.depth - door.width;
 
   return 0;
 }
@@ -307,6 +323,7 @@ const perspectiveCamera = new THREE.PerspectiveCamera(
 
 const aspect = window.innerWidth / window.innerHeight;
 const orthoFrustum = Math.max(LAYOUT_WIDTH, LAYOUT_DEPTH) * 0.68;
+
 const orthographicCamera = new THREE.OrthographicCamera(
   -orthoFrustum * aspect,
   orthoFrustum * aspect,
@@ -359,12 +376,12 @@ scene.add(grid);
 ========================= */
 buildRoomFloors();
 buildWalls();
-buildSampleFurniture();
+// buildSampleFurniture(); // keep off until layout is confirmed
 createDimensionLabels();
 syncDimensionVisibility();
 drawMiniMap();
 
-setMainView("3d");
+setMainView("top");
 render();
 
 window.addEventListener("resize", onResize);
@@ -460,7 +477,7 @@ function buildRoomWalls(room) {
         mesh.position.set(
           rect.minX + cm(seg.start) + segWidth / 2,
           WALL_HEIGHT / 2,
-          wall === "south" ? rect.minZ : rect.maxZ
+          wall === "north" ? rect.minZ : rect.maxZ
         );
 
         scene.add(mesh);
@@ -481,7 +498,7 @@ function buildRoomWalls(room) {
           header.position.set(
             rect.minX + cm(start) + width / 2,
             doorHeight + headerHeight / 2,
-            wall === "south" ? rect.minZ : rect.maxZ
+            wall === "north" ? rect.minZ : rect.maxZ
           );
 
           scene.add(header);
@@ -495,7 +512,7 @@ function buildRoomWalls(room) {
         frame.position.set(
           rect.minX + cm(start) + width / 2,
           doorHeight / 2,
-          wall === "south" ? rect.minZ + 0.01 : rect.maxZ - 0.01
+          wall === "north" ? rect.minZ + 0.01 : rect.maxZ - 0.01
         );
         scene.add(frame);
         trackHideableWallObject(frame, wall, room.id);
@@ -560,53 +577,6 @@ function buildRoomWalls(room) {
 }
 
 /* =========================
-   SAMPLE FURNITURE
-========================= */
-function buildSampleFurniture() {
-  const living = rooms.find((r) => r.id === "living_room");
-  const guest = rooms.find((r) => r.id === "guest_room");
-  const kitchen = rooms.find((r) => r.id === "kitchen");
-
-  if (living) {
-    const rect = getRoomWorldRect(living);
-
-    const sofa = new THREE.Mesh(
-      new THREE.BoxGeometry(1.8, 0.75, 0.9),
-      new THREE.MeshStandardMaterial({ color: 0x4f6fd8 })
-    );
-    sofa.position.set(rect.centerX - 1.0, 0.375, rect.centerZ + 0.7);
-    scene.add(sofa);
-
-    const table = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.7, 1.2),
-      new THREE.MeshStandardMaterial({ color: 0x9c6b3f })
-    );
-    table.position.set(rect.centerX + 0.2, 0.35, rect.centerZ);
-    scene.add(table);
-  }
-
-  if (guest) {
-    const rect = getRoomWorldRect(guest);
-    const bed = new THREE.Mesh(
-      new THREE.BoxGeometry(1.9, 0.55, 1.4),
-      new THREE.MeshStandardMaterial({ color: 0xb48cd6 })
-    );
-    bed.position.set(rect.centerX, 0.275, rect.centerZ);
-    scene.add(bed);
-  }
-
-  if (kitchen) {
-    const rect = getRoomWorldRect(kitchen);
-    const kitchenBlock = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 0.9, 0.6),
-      new THREE.MeshStandardMaterial({ color: 0xc7b59b })
-    );
-    kitchenBlock.position.set(rect.centerX, 0.45, rect.centerZ);
-    scene.add(kitchenBlock);
-  }
-}
-
-/* =========================
    DIMENSIONS
 ========================= */
 function createDimensionLabels() {
@@ -617,26 +587,6 @@ function createDimensionLabels() {
       new THREE.Vector3(rect.centerX, 1.05, rect.centerZ)
     );
   });
-
-  const living = rooms.find((r) => r.id === "living_room");
-  if (living) {
-    const rect = getRoomWorldRect(living);
-
-    addDimensionLabel(
-      `Living width ${living.width} cm`,
-      new THREE.Vector3(rect.centerX, 1.45, rect.minZ - 0.2)
-    );
-
-    addDimensionLabel(
-      `Living depth ${living.depth} cm`,
-      new THREE.Vector3(rect.minX - 0.2, 1.45, rect.centerZ)
-    );
-  }
-
-  addDimensionLabel(
-    `Wall height ${WALL_HEIGHT_CM} cm`,
-    new THREE.Vector3(bounds.maxX + 0.7, WALL_HEIGHT / 2, LAYOUT_CENTER_Z)
-  );
 }
 
 function addDimensionLabel(text, worldPosition) {
@@ -786,7 +736,7 @@ function switchToOrtho() {
   onResize();
 }
 
-function animateCameraTo(position, target, label) {
+function animateCameraTo(position, target) {
   currentAnimation = {
     startTime: performance.now(),
     duration: 700,
@@ -794,7 +744,6 @@ function animateCameraTo(position, target, label) {
     toPos: position.clone(),
     fromTarget: controls.target.clone(),
     toTarget: target.clone(),
-    label,
   };
 }
 
@@ -824,7 +773,7 @@ function focusRoom(roomId) {
     switchToOrtho();
     pos = new THREE.Vector3(rect.centerX, 9, rect.centerZ + 0.001);
     target = new THREE.Vector3(rect.centerX, 0, rect.centerZ);
-    animateCameraTo(pos, target, room.name);
+    animateCameraTo(pos, target);
     return;
   }
 
@@ -832,14 +781,14 @@ function focusRoom(roomId) {
     switchToOrtho();
     pos = new THREE.Vector3(rect.centerX + 4.5, 5.5, rect.centerZ + 4.5);
     target = new THREE.Vector3(rect.centerX, 0.4, rect.centerZ);
-    animateCameraTo(pos, target, room.name);
+    animateCameraTo(pos, target);
     return;
   }
 
   switchToPerspective();
   pos = new THREE.Vector3(rect.centerX + 4.5, 3.8, rect.centerZ + 4.5);
   target = new THREE.Vector3(rect.centerX, 0.8, rect.centerZ);
-  animateCameraTo(pos, target, room.name);
+  animateCameraTo(pos, target);
 }
 
 /* =========================
@@ -878,7 +827,7 @@ function drawMiniMap() {
   rooms.forEach((room) => {
     const r = getRoomWorldRect(room);
     const rx = offsetX + (r.minX - bounds.minX) * scale;
-    const ry = offsetY + (bounds.maxY - r.maxZ) * scale;
+    const ry = offsetY + (r.minZ - bounds.minY) * scale;
     const rw = r.width * scale;
     const rd = r.depth * scale;
 
@@ -926,7 +875,7 @@ function onMiniMapClick(event) {
   for (const room of rooms) {
     const r = getRoomWorldRect(room);
     const rx = offsetX + (r.minX - bounds.minX) * scale;
-    const ry = offsetY + (bounds.maxY - r.maxZ) * scale;
+    const ry = offsetY + (r.minZ - bounds.minY) * scale;
     const rw = r.width * scale;
     const rd = r.depth * scale;
 
@@ -996,9 +945,7 @@ function updateAnimation(now) {
     eased
   );
 
-  if (t >= 1) {
-    currentAnimation = null;
-  }
+  if (t >= 1) currentAnimation = null;
 }
 
 function easeInOutCubic(t) {
