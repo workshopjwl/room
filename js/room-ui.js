@@ -12,7 +12,6 @@ const btnFront = document.getElementById("btnFront");
 const btnLeft = document.getElementById("btnLeft");
 const btnRight = document.getElementById("btnRight");
 const btnToggleDims = document.getElementById("btnToggleDims");
-const orientationText = document.getElementById("orientationText");
 
 const ROOM_WIDTH = 8;
 const ROOM_LENGTH = 10;
@@ -562,27 +561,6 @@ function worldToScreen(position, camera, width, height) {
   };
 }
 
-function updateOrientationText() {
-  const dir = new THREE.Vector3();
-  activeCamera.getWorldDirection(dir);
-
-  const absX = Math.abs(dir.x);
-  const absZ = Math.abs(dir.z);
-  const absY = Math.abs(dir.y);
-
-  let label = "View";
-
-  if (absY > 0.85 && dir.y < 0) {
-    label = "Top";
-  } else if (absX > absZ) {
-    label = dir.x > 0 ? "Left" : "Right";
-  } else if (absZ >= absX) {
-    label = dir.z > 0 ? "Front" : "Back";
-  }
-
-  orientationText.textContent = label;
-}
-
 function updateAnimation(now) {
   if (!currentAnimation) return;
 
@@ -634,7 +612,6 @@ function render(now = performance.now()) {
   updateAnimation(now);
   controls.update();
   updateDimensionLabelPositions();
-  updateOrientationText();
 
   renderer.render(scene, activeCamera);
 }
