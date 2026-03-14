@@ -138,68 +138,6 @@
       touch-action: manipulation;
     }
 
-    #orientationWidget {
-      position: absolute;
-      right: 12px;
-      bottom: 12px;
-      width: 84px;
-      height: 84px;
-      z-index: 20;
-      border-radius: 50%;
-      background: rgba(20, 20, 20, 0.6);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.08);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      user-select: none;
-    }
-
-    #orientationInner {
-      position: relative;
-      width: 58px;
-      height: 58px;
-      border: 1px solid rgba(255,255,255,0.25);
-      border-radius: 50%;
-    }
-
-    .ori-dot {
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    .ori-dot.red {
-      background: #ff5b5b;
-      left: 50%;
-      top: 8px;
-    }
-
-    .ori-dot.blue {
-      background: #60a5fa;
-      left: 50px;
-      top: 50%;
-    }
-
-    .ori-dot.green {
-      background: #22c55e;
-      left: 8px;
-      top: 50%;
-    }
-
-    #orientationText {
-      position: absolute;
-      bottom: -18px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 10px;
-      color: #fff;
-      opacity: 0.8;
-      white-space: nowrap;
-    }
-
     #helpBadge {
       position: absolute;
       top: 82px;
@@ -257,7 +195,7 @@
         <button class="control-btn" id="btnFront">Front</button>
         <button class="control-btn" id="btnLeft">Left</button>
         <button class="control-btn" id="btnRight">Right</button>
-        <button class="control-btn active" id="btnToggleDims">Dims ON</button>
+        <button class="control-btn active" id="btnToggleDims">不顯示尺寸</button>
       </div>
     </div>
 
@@ -266,14 +204,7 @@
       <canvas id="miniMap"></canvas>
     </div>
 
-    <div id="orientationWidget">
-      <div id="orientationInner">
-        <div class="ori-dot red"></div>
-        <div class="ori-dot blue"></div>
-        <div class="ori-dot green"></div>
-        <div id="orientationText">View</div>
-      </div>
-    </div>
+
   </div>
 
   <script type="module" src="./js/room-ui.js"></script>
