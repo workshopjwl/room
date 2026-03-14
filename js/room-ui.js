@@ -1,4 +1,4 @@
-import * as THREE from "three"; 
+import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const canvas = document.getElementById("roomCanvas");
@@ -34,32 +34,37 @@ let activeFocusedRoomId = "";
 let currentAnimation = null;
 
 /* =========================
-   REAL FLOOR PLAN DATA
-   origin = living room SW corner
+   FLOOR PLAN DATA
+   Using p5 coordinates directly
+   p5:
    x -> east
-   y -> north
+   y -> south (downward on screen)
+
+   Three.js world:
+   x -> east
+   z -> north/south after conversion
 ========================= */
 const rooms = [
   {
     id: "living_room",
     name: "Living",
-    x: 0,
-    y: 0,
+    x: 302,
+    y: 336,
     width: 664,
     depth: 430,
     color: 0xe8f0ff,
     walls: { west: 15, east: 20, south: 14, north: 14 },
     doors: [
-      { id: "main_entrance", wall: "south", offset: 143, width: 90 },
-      { id: "kitchen_door", wall: "west", offset: 65, width: 81.5 },
-      { id: "balcony_door", wall: "east", offset: 60, width: 60 },
+      { id: "main_entrance", wall: "south", offsetFromWest: 143, width: 90 },
+      { id: "kitchen_door", wall: "west", offsetFromSouth: 65, width: 81.5 },
+      { id: "balcony_door", wall: "east", offsetFromSouth: 60, width: 60 },
     ],
   },
   {
     id: "balcony",
     name: "Balcony",
-    x: 684,
-    y: 0,
+    x: 986,
+    y: 529,
     width: 131,
     depth: 237,
     color: 0xe6fff2,
@@ -69,95 +74,205 @@ const rooms = [
   {
     id: "storage",
     name: "Storage",
-    x: -132,
-    y: 434,
+    x: 170,
+    y: 12,
     width: 232,
     depth: 320,
     color: 0xfff0db,
     walls: { west: 20, east: 10, south: 14, north: 20 },
-    doors: [
-      { id: "storage_door", wall: "south", align: "right", width: 75 },
-    ],
+    doors: [{ id: "storage_door", wall: "south", align: "right", width: 75 }],
   },
   {
     id: "guest_room",
     name: "Guest",
-    x: 100,
-    y: 434,
+    x: 402,
+    y: 12,
     width: 240,
     depth: 320,
     color: 0xf3e8ff,
     walls: { west: 10, east: 11, south: 14, north: 20 },
-    doors: [
-      { id: "guest_door", wall: "south", align: "right", width: 84 },
-    ],
+    doors: [{ id: "guest_door", wall: "south", align: "right", width: 84 }],
   },
   {
     id: "master_bedroom",
     name: "Master Bed",
-    x: 344,
-    y: 326,
+    x: 646,
+    y: 120,
     width: 320,
     depth: 320,
     color: 0xefe2ff,
     walls: { west: 11, east: 20, south: 11, north: 10 },
-    doors: [
-      { id: "master_bed_door", wall: "west", align: "bottom", width: 97 },
-    ],
+    doors: [{ id: "master_bed_door", wall: "west", align: "bottom", width: 97 }],
   },
   {
     id: "master_bathroom",
     name: "Master Bath",
-    x: 344,
-    y: 646,
+    x: 646,
+    y: 0,
     width: 320,
     depth: 120,
     color: 0xe0f2fe,
     walls: { west: 11, east: 20, south: 10, north: 20 },
-    doors: [
-      { id: "master_bath_door", wall: "south", align: "left", width: 75 },
-    ],
+    doors: [{ id: "master_bath_door", wall: "south", align: "left", width: 75 }],
   },
   {
     id: "living_bathroom",
     name: "Bath",
-    x: -128,
-    y: 157,
+    x: 174,
+    y: 346,
     width: 128,
     depth: 263,
     color: 0xe6fffb,
     walls: { west: 18, east: 15, south: 10, north: 14 },
-    doors: [
-      { id: "living_bath_door", wall: "east", align: "top", width: 81.5 },
-    ],
-  },
-  {
-    id: "laundry",
-    name: "Laundry",
-    x: -286,
-    y: 167,
-    width: 140,
-    depth: 241,
-    color: 0xffedd5,
-    walls: { west: 20, east: 18, south: 10, north: 12 },
-    doors: [
-      { id: "laundry_door", wall: "south", fromRight: 70, width: 70 },
-    ],
+    doors: [{ id: "living_bath_door", wall: "east", align: "top", width: 81.5 }],
   },
   {
     id: "kitchen",
     name: "Kitchen",
-    x: -302,
-    y: 0,
+    x: 0,
+    y: 609,
     width: 302,
     depth: 157,
     color: 0xfde7c7,
     walls: { west: 20, east: 15, south: 14, north: 10 },
-    doors: [
-      { id: "kitchen_room_door", wall: "east", offset: 65, width: 81.5 },
-    ],
+    doors: [{ id: "kitchen_room_door", wall: "east", offsetFromSouth: 65, width: 81.5 }],
+  },
+  {
+    id: "laundry",
+    name: "Laundry",
+    x: 16,
+    y: 358,
+    width: 140,
+    depth: 241,
+    color: 0xffedd5,
+    walls: { west: 20, east: 18, south: 10, north: 12 },
+    doors: [{ id: "laundry_door", wall: "south", align: "right", width: 70 }],
   },
 ];
+
+/* =========================
+   HELPERS
+========================= */
+function cm(v) {
+  return v * CM_TO_UNIT;
+}
+
+function getRoomWorldRect(room) {
+  const minX = cm(room.x);
+  const maxX = cm(room.x + room.width);
+
+  // Convert p5 screen Y to world Z
+  // south edge = -(y + depth)
+  // north edge = -y
+  const minZ = cm(-(room.y + room.depth));
+  const maxZ = cm(-room.y);
+
+  return {
+    minX,
+    maxX,
+    minZ,
+    maxZ,
+    width: cm(room.width),
+    depth: cm(room.depth),
+    centerX: (minX + maxX) / 2,
+    centerZ: (minZ + maxZ) / 2,
+  };
+}
+
+function getLayoutBounds() {
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+
+  rooms.forEach((room) => {
+    const rect = getRoomWorldRect(room);
+    minX = Math.min(minX, rect.minX);
+    minZ = Math.min(minZ, rect.minZ);
+    maxX = Math.max(maxX, rect.maxX);
+    maxZ = Math.max(maxZ, rect.maxZ);
+  });
+
+  return {
+    minX,
+    minY: minZ,
+    maxX,
+    maxY: maxZ,
+  };
+}
+
+function getWallThicknessCm(room, wall) {
+  return room.walls?.[wall] ?? DEFAULT_WALL_THICKNESS_CM;
+}
+
+function getWallColor(roomId) {
+  if (roomId === "balcony") return 0xd9fbe8;
+  return 0xf5f5f5;
+}
+
+function getDoorStart(room, door) {
+  const horizontal = door.wall === "north" || door.wall === "south";
+
+  if (horizontal) {
+    if (typeof door.offsetFromWest === "number") return door.offsetFromWest;
+    if (typeof door.offset === "number") return door.offset;
+    if (typeof door.gapFromRight === "number") {
+      return room.width - door.gapFromRight - door.width;
+    }
+    if (typeof door.fromRight === "number") {
+      return room.width - door.fromRight - door.width;
+    }
+    if (door.align === "left") return 0;
+    if (door.align === "right") return room.width - door.width;
+    return 0;
+  }
+
+  // vertical walls: measure from SOUTH edge upward
+  if (typeof door.offsetFromSouth === "number") return door.offsetFromSouth;
+  if (typeof door.offsetFromNorth === "number") {
+    return room.depth - door.offsetFromNorth - door.width;
+  }
+  if (door.align === "bottom") return 0;
+  if (door.align === "top") return room.depth - door.width;
+
+  return 0;
+}
+
+function buildSegments(room, totalLengthCm, doorList) {
+  if (!doorList.length) {
+    return [{ start: 0, length: totalLengthCm }];
+  }
+
+  const openings = doorList
+    .map((door) => {
+      const start = Math.max(0, getDoorStart(room, door));
+      const end = Math.min(totalLengthCm, start + door.width);
+      return { start, end };
+    })
+    .sort((a, b) => a.start - b.start);
+
+  const segments = [];
+  let cursor = 0;
+
+  openings.forEach((opening) => {
+    if (opening.start > cursor) {
+      segments.push({ start: cursor, length: opening.start - cursor });
+    }
+    cursor = Math.max(cursor, opening.end);
+  });
+
+  if (cursor < totalLengthCm) {
+    segments.push({ start: cursor, length: totalLengthCm - cursor });
+  }
+
+  return segments.filter((seg) => seg.length > 0.1);
+}
+
+function trackHideableWallObject(obj, wall, roomId) {
+  obj.userData.wallSide = wall;
+  obj.userData.roomId = roomId;
+  hideableWallObjects.push(obj);
+}
 
 /* =========================
    BOUNDS
@@ -208,6 +323,7 @@ perspectiveCamera.position.set(
   8,
   LAYOUT_CENTER_Z + 10
 );
+
 orthographicCamera.position.set(
   LAYOUT_CENTER_X + 8,
   9,
@@ -229,11 +345,7 @@ const ambient = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(ambient);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-dirLight.position.set(
-  LAYOUT_CENTER_X + 8,
-  12,
-  LAYOUT_CENTER_Z + 6
-);
+dirLight.position.set(LAYOUT_CENTER_X + 8, 12, LAYOUT_CENTER_Z + 6);
 scene.add(dirLight);
 
 const gridSize = Math.ceil(Math.max(LAYOUT_WIDTH, LAYOUT_DEPTH) + 6);
@@ -258,104 +370,13 @@ render();
 window.addEventListener("resize", onResize);
 miniMapCanvas.addEventListener("click", onMiniMapClick);
 
-btnView3d.addEventListener("click", () => setMainView("3d"));
-btnViewIso.addEventListener("click", () => setMainView("iso"));
-btnViewTop.addEventListener("click", () => setMainView("top"));
-btnFront.addEventListener("click", () => snapSideView("front"));
-btnLeft.addEventListener("click", () => snapSideView("left"));
-btnRight.addEventListener("click", () => snapSideView("right"));
-btnToggleDims.addEventListener("click", toggleDimensions);
-
-/* =========================
-   HELPERS
-========================= */
-function cm(v) {
-  return v * CM_TO_UNIT;
-}
-
-function getLayoutBounds() {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  rooms.forEach((room) => {
-    minX = Math.min(minX, cm(room.x));
-    minY = Math.min(minY, cm(room.y));
-    maxX = Math.max(maxX, cm(room.x + room.width));
-    maxY = Math.max(maxY, cm(room.y + room.depth));
-  });
-
-  return { minX, minY, maxX, maxY };
-}
-
-function getRoomWorldRect(room) {
-  return {
-    minX: cm(room.x),
-    maxX: cm(room.x + room.width),
-    minZ: cm(room.y),
-    maxZ: cm(room.y + room.depth),
-    width: cm(room.width),
-    depth: cm(room.depth),
-    centerX: cm(room.x + room.width / 2),
-    centerZ: cm(room.y + room.depth / 2),
-  };
-}
-
-function getWallThicknessCm(room, wall) {
-  return room.walls?.[wall] ?? DEFAULT_WALL_THICKNESS_CM;
-}
-
-function getWallColor(roomId) {
-  if (roomId === "balcony") return 0xd9fbe8;
-  return 0xf5f5f5;
-}
-
-function getDoorStart(room, door) {
-  if (typeof door.offset === "number") return door.offset;
-  if (door.align === "right") return room.width - door.width;
-  if (door.align === "left") return 0;
-  if (door.align === "bottom") return 0;
-  if (door.align === "top") return room.depth - door.width;
-  if (typeof door.fromRight === "number") return room.width - door.fromRight - door.width;
-  return 0;
-}
-
-function buildSegments(room, totalLengthCm, doorList) {
-  if (!doorList.length) {
-    return [{ start: 0, length: totalLengthCm }];
-  }
-
-  const openings = doorList
-    .map((door) => {
-      const start = Math.max(0, getDoorStart(room, door));
-      const end = Math.min(totalLengthCm, start + door.width);
-      return { start, end };
-    })
-    .sort((a, b) => a.start - b.start);
-
-  const segments = [];
-  let cursor = 0;
-
-  openings.forEach((opening) => {
-    if (opening.start > cursor) {
-      segments.push({ start: cursor, length: opening.start - cursor });
-    }
-    cursor = Math.max(cursor, opening.end);
-  });
-
-  if (cursor < totalLengthCm) {
-    segments.push({ start: cursor, length: totalLengthCm - cursor });
-  }
-
-  return segments.filter((seg) => seg.length > 0.1);
-}
-
-function trackHideableWallObject(obj, wall, roomId) {
-  obj.userData.wallSide = wall;
-  obj.userData.roomId = roomId;
-  hideableWallObjects.push(obj);
-}
+btnView3d?.addEventListener("click", () => setMainView("3d"));
+btnViewIso?.addEventListener("click", () => setMainView("iso"));
+btnViewTop?.addEventListener("click", () => setMainView("top"));
+btnFront?.addEventListener("click", () => snapSideView("front"));
+btnLeft?.addEventListener("click", () => snapSideView("left"));
+btnRight?.addEventListener("click", () => snapSideView("right"));
+btnToggleDims?.addEventListener("click", toggleDimensions);
 
 /* =========================
    FLOORS
@@ -381,7 +402,9 @@ function buildRoomFloors() {
     roomFloorMeshes.push(roomFloor);
 
     const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(rect.width, FLOOR_THICKNESS, rect.depth)),
+      new THREE.EdgesGeometry(
+        new THREE.BoxGeometry(rect.width, FLOOR_THICKNESS, rect.depth)
+      ),
       new THREE.LineBasicMaterial({ color: 0x555555 })
     );
     edges.position.set(rect.centerX, FLOOR_THICKNESS / 2, rect.centerZ);
@@ -545,18 +568,20 @@ function buildSampleFurniture() {
   const kitchen = rooms.find((r) => r.id === "kitchen");
 
   if (living) {
+    const rect = getRoomWorldRect(living);
+
     const sofa = new THREE.Mesh(
       new THREE.BoxGeometry(1.8, 0.75, 0.9),
       new THREE.MeshStandardMaterial({ color: 0x4f6fd8 })
     );
-    sofa.position.set(cm(220), 0.375, cm(120));
+    sofa.position.set(rect.centerX - 1.0, 0.375, rect.centerZ + 0.7);
     scene.add(sofa);
 
     const table = new THREE.Mesh(
       new THREE.BoxGeometry(1.2, 0.7, 1.2),
       new THREE.MeshStandardMaterial({ color: 0x9c6b3f })
     );
-    table.position.set(cm(320), 0.35, cm(200));
+    table.position.set(rect.centerX + 0.2, 0.35, rect.centerZ);
     scene.add(table);
   }
 
@@ -631,8 +656,10 @@ function syncDimensionVisibility() {
     item.element.style.display = dimensionsVisible ? "block" : "none";
   });
 
-  btnToggleDims.textContent = dimensionsVisible ? "隱藏尺寸" : "顯示尺寸";
-  btnToggleDims.classList.toggle("active", dimensionsVisible);
+  if (btnToggleDims) {
+    btnToggleDims.textContent = dimensionsVisible ? "隱藏尺寸" : "顯示尺寸";
+    btnToggleDims.classList.toggle("active", dimensionsVisible);
+  }
 }
 
 function toggleDimensions() {
@@ -646,9 +673,9 @@ function toggleDimensions() {
 function setMainView(view) {
   activeView = view;
 
-  btnView3d.classList.toggle("active", view === "3d");
-  btnViewIso.classList.toggle("active", view === "iso");
-  btnViewTop.classList.toggle("active", view === "top");
+  btnView3d?.classList.toggle("active", view === "3d");
+  btnViewIso?.classList.toggle("active", view === "iso");
+  btnViewTop?.classList.toggle("active", view === "top");
 
   updateWallVisibilityForView(view);
 
@@ -849,10 +876,11 @@ function drawMiniMap() {
   ctx.strokeRect(offsetX, offsetY, planPixelWidth, planPixelDepth);
 
   rooms.forEach((room) => {
-    const rx = offsetX + (cm(room.x) - bounds.minX) * scale;
-    const ry = offsetY + (cm(room.y) - bounds.minY) * scale;
-    const rw = cm(room.width) * scale;
-    const rd = cm(room.depth) * scale;
+    const r = getRoomWorldRect(room);
+    const rx = offsetX + (r.minX - bounds.minX) * scale;
+    const ry = offsetY + (bounds.maxY - r.maxZ) * scale;
+    const rw = r.width * scale;
+    const rd = r.depth * scale;
 
     let fill = "#dbeafe";
     if (room.id === "kitchen") fill = "#fde7c7";
@@ -896,10 +924,11 @@ function onMiniMapClick(event) {
   const offsetY = (height - planPixelDepth) / 2;
 
   for (const room of rooms) {
-    const rx = offsetX + (cm(room.x) - bounds.minX) * scale;
-    const ry = offsetY + (cm(room.y) - bounds.minY) * scale;
-    const rw = cm(room.width) * scale;
-    const rd = cm(room.depth) * scale;
+    const r = getRoomWorldRect(room);
+    const rx = offsetX + (r.minX - bounds.minX) * scale;
+    const ry = offsetY + (bounds.maxY - r.maxZ) * scale;
+    const rw = r.width * scale;
+    const rd = r.depth * scale;
 
     if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rd) {
       focusRoom(room.id);
