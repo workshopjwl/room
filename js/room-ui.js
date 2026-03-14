@@ -16,9 +16,9 @@ const btnToggleDims = document.getElementById("btnToggleDims");
 /* =========================
    SCALE / CONSTANTS
 ========================= */
-const CM_TO_UNIT = 0.01; // 1m = 100cm
-const ROOM_HEIGHT_CM = 250;
-const ROOM_HEIGHT = ROOM_HEIGHT_CM * CM_TO_UNIT;
+const CM_TO_UNIT = 0.01; // 1 unit = 1 meter
+const WALL_HEIGHT_CM = 250;
+const WALL_HEIGHT = WALL_HEIGHT_CM * CM_TO_UNIT;
 const FLOOR_THICKNESS = 0.04;
 const DEFAULT_WALL_THICKNESS_CM = 12;
 const DOOR_HEIGHT_CM = 210;
@@ -26,7 +26,7 @@ const DOOR_HEIGHT_CM = 210;
 const dimensionLabels = [];
 const focusMarkers = [];
 const roomFloorMeshes = [];
-const wallMeshes = [];
+const hideableWallObjects = [];
 
 let dimensionsVisible = true;
 let activeView = "3d";
@@ -35,7 +35,7 @@ let currentAnimation = null;
 
 /* =========================
    REAL FLOOR PLAN DATA
-   x/y in cm from living SW corner
+   origin = living room SW corner
    x -> east
    y -> north
 ========================= */
@@ -136,7 +136,7 @@ const rooms = [
     id: "kitchen",
     name: "Kitchen",
     x: -302,
-    y: 430,
+    y: 32, // corrected from 430 so it sits below laundry instead of overlapping storage
     width: 302,
     depth: 157,
     color: 0xf3f4f6,
@@ -146,7 +146,7 @@ const rooms = [
 ];
 
 /* =========================
-   WORLD BOUNDS
+   BOUNDS
 ========================= */
 const bounds = getLayoutBounds();
 const LAYOUT_WIDTH = bounds.maxX - bounds.minX;
@@ -177,7 +177,7 @@ const perspectiveCamera = new THREE.PerspectiveCamera(
 );
 
 const aspect = window.innerWidth / window.innerHeight;
-const orthoFrustum = Math.max(LAYOUT_WIDTH, LAYOUT_DEPTH) * 0.65;
+const orthoFrustum = Math.max(LAYOUT_WIDTH, LAYOUT_DEPTH) * 0.68;
 const orthographicCamera = new THREE.OrthographicCamera(
   -orthoFrustum * aspect,
   orthoFrustum * aspect,
@@ -196,7 +196,7 @@ perspectiveCamera.position.set(
 );
 orthographicCamera.position.set(
   LAYOUT_CENTER_X + 8,
-  10,
+  9,
   LAYOUT_CENTER_Z + 8
 );
 
@@ -204,10 +204,12 @@ const controls = new OrbitControls(activeCamera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.screenSpacePanning = true;
-controls.target.set(LAYOUT_CENTER_X, 1.2, LAYOUT_CENTER_Z);
+controls.target.set(LAYOUT_CENTER_X, 1.1, LAYOUT_CENTER_Z);
 controls.minDistance = 3;
-controls.maxDistance = 40;
+controls.maxDistance = 45;
 controls.maxPolarAngle = Math.PI / 2.02;
+controls.touches.ONE = THREE.TOUCH.ROTATE;
+controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
 
 const ambient = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
 scene.add(ambient);
@@ -226,6 +228,9 @@ const grid = new THREE.GridHelper(gridSize, gridDivisions, 0x444444, 0x2f2f2f);
 grid.position.set(LAYOUT_CENTER_X, 0.001, LAYOUT_CENTER_Z);
 scene.add(grid);
 
+/* =========================
+   BUILD
+========================= */
 buildRoomFloors();
 buildWalls();
 buildSampleFurniture();
@@ -302,12 +307,14 @@ function getDoorStart(room, door) {
   return 0;
 }
 
-function buildSegments(totalLengthCm, doorList) {
-  if (!doorList.length) return [{ start: 0, length: totalLengthCm }];
+function buildSegments(room, totalLengthCm, doorList) {
+  if (!doorList.length) {
+    return [{ start: 0, length: totalLengthCm }];
+  }
 
   const openings = doorList
     .map((door) => {
-      const start = Math.max(0, getDoorStart(thisRoomForCalc, door));
+      const start = Math.max(0, getDoorStart(room, door));
       const end = Math.min(totalLengthCm, start + door.width);
       return { start, end };
     })
@@ -330,11 +337,14 @@ function buildSegments(totalLengthCm, doorList) {
   return segments.filter((seg) => seg.length > 0.1);
 }
 
-// helper for buildSegments without rewriting too much
-let thisRoomForCalc = null;
+function trackHideableWallObject(obj, wall, roomId) {
+  obj.userData.wallSide = wall;
+  obj.userData.roomId = roomId;
+  hideableWallObjects.push(obj);
+}
 
 /* =========================
-   BUILD FLOORS
+   FLOORS
 ========================= */
 function buildRoomFloors() {
   rooms.forEach((room) => {
@@ -375,12 +385,10 @@ function buildRoomFloors() {
 }
 
 /* =========================
-   BUILD WALLS
+   WALLS
 ========================= */
 function buildWalls() {
-  rooms.forEach((room) => {
-    buildRoomWalls(room);
-  });
+  rooms.forEach((room) => buildRoomWalls(room));
 }
 
 function buildRoomWalls(room) {
@@ -391,41 +399,41 @@ function buildRoomWalls(room) {
   });
 
   const doorHeight = cm(DOOR_HEIGHT_CM);
+  const walls = room.walls || {};
 
   ["north", "south", "east", "west"].forEach((wall) => {
+    if (!(wall in walls)) return;
+
     const thicknessCm = getWallThicknessCm(room, wall);
     const thickness = cm(thicknessCm);
     const wallDoors = (room.doors || []).filter((d) => d.wall === wall);
 
     if (wall === "north" || wall === "south") {
       const totalLengthCm = room.width;
-      thisRoomForCalc = room;
-      const segments = buildSegments(totalLengthCm, wallDoors);
+      const segments = buildSegments(room, totalLengthCm, wallDoors);
 
       segments.forEach((seg) => {
         const segWidth = cm(seg.length);
 
         const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(segWidth, ROOM_HEIGHT, thickness),
+          new THREE.BoxGeometry(segWidth, WALL_HEIGHT, thickness),
           wallMaterial.clone()
         );
 
         mesh.position.set(
           rect.minX + cm(seg.start) + segWidth / 2,
-          ROOM_HEIGHT / 2,
+          WALL_HEIGHT / 2,
           wall === "south" ? rect.minZ : rect.maxZ
         );
 
-        mesh.userData.wallSide = wall;
-        mesh.userData.roomId = room.id;
         scene.add(mesh);
-        wallMeshes.push(mesh);
+        trackHideableWallObject(mesh, wall, room.id);
       });
 
       wallDoors.forEach((door) => {
         const start = getDoorStart(room, door);
         const width = cm(door.width);
-        const headerHeight = Math.max(0.2, ROOM_HEIGHT - doorHeight);
+        const headerHeight = Math.max(0.2, WALL_HEIGHT - doorHeight);
 
         if (headerHeight > 0.01) {
           const header = new THREE.Mesh(
@@ -439,10 +447,8 @@ function buildRoomWalls(room) {
             wall === "south" ? rect.minZ : rect.maxZ
           );
 
-          header.userData.wallSide = wall;
-          header.userData.roomId = room.id;
           scene.add(header);
-          wallMeshes.push(header);
+          trackHideableWallObject(header, wall, room.id);
         }
 
         const frame = new THREE.LineSegments(
@@ -455,36 +461,34 @@ function buildRoomWalls(room) {
           wall === "south" ? rect.minZ + 0.01 : rect.maxZ - 0.01
         );
         scene.add(frame);
+        trackHideableWallObject(frame, wall, room.id);
       });
     } else {
       const totalLengthCm = room.depth;
-      thisRoomForCalc = room;
-      const segments = buildSegments(totalLengthCm, wallDoors);
+      const segments = buildSegments(room, totalLengthCm, wallDoors);
 
       segments.forEach((seg) => {
         const segDepth = cm(seg.length);
 
         const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(thickness, ROOM_HEIGHT, segDepth),
+          new THREE.BoxGeometry(thickness, WALL_HEIGHT, segDepth),
           wallMaterial.clone()
         );
 
         mesh.position.set(
           wall === "west" ? rect.minX : rect.maxX,
-          ROOM_HEIGHT / 2,
+          WALL_HEIGHT / 2,
           rect.minZ + cm(seg.start) + segDepth / 2
         );
 
-        mesh.userData.wallSide = wall;
-        mesh.userData.roomId = room.id;
         scene.add(mesh);
-        wallMeshes.push(mesh);
+        trackHideableWallObject(mesh, wall, room.id);
       });
 
       wallDoors.forEach((door) => {
         const start = getDoorStart(room, door);
         const width = cm(door.width);
-        const headerHeight = Math.max(0.2, ROOM_HEIGHT - doorHeight);
+        const headerHeight = Math.max(0.2, WALL_HEIGHT - doorHeight);
 
         if (headerHeight > 0.01) {
           const header = new THREE.Mesh(
@@ -498,10 +502,8 @@ function buildRoomWalls(room) {
             rect.minZ + cm(start) + width / 2
           );
 
-          header.userData.wallSide = wall;
-          header.userData.roomId = room.id;
           scene.add(header);
-          wallMeshes.push(header);
+          trackHideableWallObject(header, wall, room.id);
         }
 
         const frame = new THREE.LineSegments(
@@ -514,6 +516,7 @@ function buildRoomWalls(room) {
           rect.minZ + cm(start) + width / 2
         );
         scene.add(frame);
+        trackHideableWallObject(frame, wall, room.id);
       });
     }
   });
@@ -579,10 +582,12 @@ function createDimensionLabels() {
   const living = rooms.find((r) => r.id === "living_room");
   if (living) {
     const rect = getRoomWorldRect(living);
+
     addDimensionLabel(
       `Living width ${living.width} cm`,
       new THREE.Vector3(rect.centerX, 1.45, rect.minZ - 0.2)
     );
+
     addDimensionLabel(
       `Living depth ${living.depth} cm`,
       new THREE.Vector3(rect.minX - 0.2, 1.45, rect.centerZ)
@@ -590,8 +595,8 @@ function createDimensionLabels() {
   }
 
   addDimensionLabel(
-    `Wall height ${ROOM_HEIGHT_CM} cm`,
-    new THREE.Vector3(bounds.maxX + 0.7, ROOM_HEIGHT / 2, LAYOUT_CENTER_Z)
+    `Wall height ${WALL_HEIGHT_CM} cm`,
+    new THREE.Vector3(bounds.maxX + 0.7, WALL_HEIGHT / 2, LAYOUT_CENTER_Z)
   );
 }
 
@@ -664,12 +669,12 @@ function setMainView(view) {
 }
 
 function updateWallVisibilityForView(view) {
-  wallMeshes.forEach((mesh) => {
+  hideableWallObjects.forEach((obj) => {
     if (view === "iso") {
-      const side = mesh.userData.wallSide;
-      mesh.visible = side !== "south" && side !== "west";
+      const side = obj.userData.wallSide;
+      obj.visible = side !== "south" && side !== "west";
     } else {
-      mesh.visible = true;
+      obj.visible = true;
     }
   });
 }
@@ -760,7 +765,6 @@ function focusRoom(roomId) {
   if (!room) return;
 
   const rect = getRoomWorldRect(room);
-
   activeFocusedRoomId = roomId;
 
   focusMarkers.forEach((item) => {
@@ -988,6 +992,6 @@ function render(now = performance.now()) {
   updateAnimation(now);
   controls.update();
   updateDimensionLabelPositions();
-  
+
   renderer.render(scene, activeCamera);
 }
