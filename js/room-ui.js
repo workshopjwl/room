@@ -617,7 +617,7 @@ function syncDimensionVisibility() {
     item.element.style.display = dimensionsVisible ? "block" : "none";
   });
 
-  btnToggleDims.textContent = dimensionsVisible ? "Dims ON" : "Dims OFF";
+  btnToggleDims.textContent = dimensionsVisible ? "隱藏尺寸" : "顯示尺寸";
   btnToggleDims.classList.toggle("active", dimensionsVisible);
 }
 
